@@ -31,7 +31,7 @@ const styles = StyleSheet.create((theme) => ({
   input: {
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
+    borderRadius: 8,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     color: theme.colors.foreground,
@@ -41,7 +41,7 @@ const styles = StyleSheet.create((theme) => ({
   chip: {
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[1],
-    borderRadius: theme.radius.full,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
@@ -50,7 +50,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.accent,
   },
   chipText: { color: theme.colors.foreground, fontSize: theme.fontSize.xs },
-  chipTextOn: { color: theme.colors.accentForeground || "#fff", fontSize: theme.fontSize.xs },
+  chipTextOn: { color: "#fff", fontSize: theme.fontSize.xs },
   warn: {
     color: theme.colors.statusWarning || theme.colors.statusDanger || "#b45309",
     fontSize: theme.fontSize.xs,
