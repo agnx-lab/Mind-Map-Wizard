@@ -1,7 +1,8 @@
-// 场景：Mind Map Wizard Sub App 入口 — 导出 activate + 详情配置。
+// 场景：Mind Map Wizard Sub App 入口 — activate + 详情 + Agent 工具。
 import type { WorkspaceAppHostApi, WorkspaceAppModule } from "@getagnx/app-sdk";
 import { activate as activatePanel, bindMindMapWizardHarnessHost } from "./panel";
 import { registerMmwDetailConfig } from "./detail-config";
+import { registerMmwAgentTools } from "./agent-tools";
 import { MMW_APP_ID } from "./constants";
 
 export const appId = MMW_APP_ID;
@@ -9,8 +10,10 @@ export const appId = MMW_APP_ID;
 export function activate(host: WorkspaceAppHostApi): () => void {
   bindMindMapWizardHarnessHost(host);
   const disposeDetail = registerMmwDetailConfig(host);
+  const disposeTools = registerMmwAgentTools(host);
   const disposePanel = activatePanel(host);
   return () => {
+    disposeTools();
     disposeDetail();
     disposePanel();
   };

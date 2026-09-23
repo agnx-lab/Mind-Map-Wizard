@@ -1,14 +1,17 @@
-// 场景：Mind Map Wizard host.config 文档 — AI 提供方 / OpenRouter / Ollama。
+// 场景：Mind Map Wizard host.config 文档 — OpenRouter / DeepSeek / Ollama。
 import type { WorkspaceAppConfigApi } from "@getagnx/app-sdk";
 import { MMW_APP_ID, MMW_CONFIG_KEY, MMW_DEFAULT_PORT } from "./constants";
 
-export type MmwAiProvider = "openrouter" | "ollama";
+export type MmwAiProvider = "openrouter" | "deepseek" | "ollama";
 
 export interface MmwAppConfigDocument {
   version: 1;
   port: number;
   aiProvider: MmwAiProvider;
   openRouterApiKey?: string;
+  deepseekApiKey?: string;
+  deepseekBaseUrl?: string;
+  deepseekModel?: string;
   ollamaBaseUrl?: string;
 }
 
@@ -16,13 +19,17 @@ export function defaultMmwAppConfigDocument(): MmwAppConfigDocument {
   return {
     version: 1,
     port: MMW_DEFAULT_PORT,
-    aiProvider: "openrouter",
+    aiProvider: "deepseek",
+    deepseekBaseUrl: "https://api.deepseek.com",
+    deepseekModel: "deepseek-chat",
     ollamaBaseUrl: "http://127.0.0.1:11434",
   };
 }
 
 function normalizeProvider(raw: unknown): MmwAiProvider {
-  return raw === "ollama" ? "ollama" : "openrouter";
+  if (raw === "ollama") return "ollama";
+  if (raw === "openrouter") return "openrouter";
+  return "deepseek";
 }
 
 function normalizeSecret(raw: unknown): string | undefined {
@@ -44,6 +51,10 @@ export function normalizeMmwAppConfigDocument(raw: unknown): MmwAppConfigDocumen
         : defaults.port,
     aiProvider: normalizeProvider(doc.aiProvider),
     openRouterApiKey: normalizeSecret(doc.openRouterApiKey),
+    deepseekApiKey: normalizeSecret(doc.deepseekApiKey),
+    deepseekBaseUrl:
+      normalizeSecret(doc.deepseekBaseUrl)?.replace(/\/+$/, "") || defaults.deepseekBaseUrl,
+    deepseekModel: normalizeSecret(doc.deepseekModel) || defaults.deepseekModel,
     ollamaBaseUrl:
       normalizeSecret(doc.ollamaBaseUrl)?.replace(/\/+$/, "") || defaults.ollamaBaseUrl,
   };
@@ -69,7 +80,16 @@ export async function loadMmwConfigFromHost(
 export async function saveMmwConfigToHost(
   config: WorkspaceAppConfigApi | null | undefined,
   patch: Partial<
-    Pick<MmwAppConfigDocument, "port" | "aiProvider" | "openRouterApiKey" | "ollamaBaseUrl">
+    Pick<
+      MmwAppConfigDocument,
+      | "port"
+      | "aiProvider"
+      | "openRouterApiKey"
+      | "deepseekApiKey"
+      | "deepseekBaseUrl"
+      | "deepseekModel"
+      | "ollamaBaseUrl"
+    >
   >,
 ): Promise<MmwAppConfigDocument> {
   const current = await loadMmwConfigFromHost(config);
@@ -78,9 +98,8 @@ export async function saveMmwConfigToHost(
     ...patch,
     version: 1,
   };
-  if (patch.openRouterApiKey === "") {
-    delete merged.openRouterApiKey;
-  }
+  if (patch.openRouterApiKey === "") delete merged.openRouterApiKey;
+  if (patch.deepseekApiKey === "") delete merged.deepseekApiKey;
   const normalized = normalizeMmwAppConfigDocument(merged);
   if (!config?.set) return normalized;
   await config.set({
@@ -92,12 +111,14 @@ export async function saveMmwConfigToHost(
   return normalized;
 }
 
-/** 写入静态站可读的注入文件（无密钥落 git；ensure / 面板保存后调用）。 */
 export function toPublicHostConfigJson(doc: MmwAppConfigDocument): Record<string, unknown> {
   return {
     version: 1,
     aiProvider: doc.aiProvider,
     ollamaBaseUrl: doc.ollamaBaseUrl,
+    deepseekBaseUrl: doc.deepseekBaseUrl,
+    deepseekModel: doc.deepseekModel,
     openRouterApiKey: doc.openRouterApiKey || undefined,
+    deepseekApiKey: doc.deepseekApiKey || undefined,
   };
 }

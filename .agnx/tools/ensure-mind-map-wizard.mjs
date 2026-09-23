@@ -14,9 +14,9 @@ import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-/** clone 根 = mind-map-wizard 仓根（.agnx/tools 的上两级） */
 const repoRoot = path.resolve(__dirname, "../..");
 const defaultPort = 3095;
+const serverScript = path.join(__dirname, "mmw-static-server.mjs");
 
 function parseArgs(argv) {
   let workDir = process.env.AGNX_APP_DATA_ROOT || "";
@@ -93,7 +93,7 @@ async function readPrefsFingerprint(agnxHome) {
 }
 
 function fingerprint(cfg, prefsFp) {
-  return JSON.stringify({ repoRoot, port: cfg.port, prefsFp });
+  return JSON.stringify({ repoRoot, port: cfg.port, prefsFp, server: "mmw-static-server" });
 }
 
 async function pathExists(p) {
@@ -178,10 +178,12 @@ async function main() {
   const cfg = parseArgs(process.argv.slice(2));
   const indexHtml = path.join(repoRoot, "index.html");
   if (!(await pathExists(indexHtml))) {
-    emit({
-      ok: false,
-      error: `缺少 index.html：${indexHtml}`,
-    });
+    emit({ ok: false, error: `缺少 index.html：${indexHtml}` });
+    process.exitCode = 1;
+    return;
+  }
+  if (!(await pathExists(serverScript))) {
+    emit({ ok: false, error: `缺少 mmw-static-server.mjs：${serverScript}` });
     process.exitCode = 1;
     return;
   }
@@ -223,30 +225,27 @@ async function main() {
     await sleep(400);
   }
 
-  // python3 -m http.server：文档根必须是仓根（MMW 大量 /scripts /styles 绝对路径）
-  const child = spawn(
-    process.env.MMW_PYTHON_BIN || "python3",
-    ["-m", "http.server", String(cfg.port), "--bind", "127.0.0.1"],
-    {
-      cwd: repoRoot,
-      detached: true,
-      stdio: "ignore",
-      env: { ...process.env },
+  const child = spawn(process.execPath, [serverScript, String(cfg.port)], {
+    cwd: repoRoot,
+    detached: true,
+    stdio: "ignore",
+    env: {
+      ...process.env,
+      MMW_PORT: String(cfg.port),
+      AGNX_HOME: agnxHome,
     },
-  );
+  });
   child.unref();
   const pid = child.pid;
 
   const healthy = await waitHealthy(origin);
   if (!healthy || !isPidAlive(pid)) {
-    if (pid) {
-      stopPid(pid);
-    }
+    if (pid) stopPid(pid);
     emit({
       ok: false,
       port: cfg.port,
       origin,
-      error: "静态站未在超时内就绪（python3 -m http.server）",
+      error: "静态站未在超时内就绪（mmw-static-server）",
       pid,
       warnings: warnings.length > 0 ? warnings : undefined,
     });

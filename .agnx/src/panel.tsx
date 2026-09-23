@@ -258,7 +258,7 @@ export function activate(host: WorkspaceAppHostApi): () => void {
       isolation: {
         mode: "iframe",
         sidecarTools: [MMW_ENSURE_TOOL_REL],
-        note: "Tab iframe 加载本仓静态 Mind Map Wizard；ensure 起 python http.server",
+        note: "Tab iframe 加载本仓静态 Mind Map Wizard；ensure 起 mmw-static-server（含 DeepSeek 反代）",
       },
     }),
   );

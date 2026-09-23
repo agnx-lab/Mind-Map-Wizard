@@ -1,4 +1,4 @@
-// 场景：Mind Map Wizard 详情配置 — OpenRouter / Ollama / 端口；保存后重挂 Tab。
+// 场景：Mind Map Wizard 详情配置 — DeepSeek / OpenRouter / Ollama；保存后重挂。
 import { createElement, useCallback, useEffect, useState, type ReactElement } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -62,6 +62,7 @@ function ProviderField(): ReactElement {
   const [provider, setProvider] = useState<MmwAiProvider>(cachedConfig.aiProvider);
   const [port, setPort] = useState(String(cachedConfig.port));
   const [ollama, setOllama] = useState(cachedConfig.ollamaBaseUrl || "http://127.0.0.1:11434");
+  const [model, setModel] = useState(cachedConfig.deepseekModel || "deepseek-chat");
   const [keyInput, setKeyInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -75,6 +76,7 @@ function ProviderField(): ReactElement {
       setProvider(cfg.aiProvider);
       setPort(String(cfg.port));
       setOllama(cfg.ollamaBaseUrl || "http://127.0.0.1:11434");
+      setModel(cfg.deepseekModel || "deepseek-chat");
     });
   }, []);
 
@@ -90,9 +92,15 @@ function ProviderField(): ReactElement {
         aiProvider: provider,
         port: Number.isFinite(portNum) ? portNum : MMW_DEFAULT_PORT,
         ollamaBaseUrl: ollama.trim() || "http://127.0.0.1:11434",
+        deepseekModel: model.trim() || "deepseek-chat",
+        deepseekBaseUrl: "https://api.deepseek.com",
       };
       if (keyInput.trim()) {
-        patch.openRouterApiKey = keyInput.trim();
+        if (provider === "deepseek") {
+          patch.deepseekApiKey = keyInput.trim();
+        } else if (provider === "openrouter") {
+          patch.openRouterApiKey = keyInput.trim();
+        }
       }
       const saved = await saveMmwConfigToHost(host.config, patch);
       setCachedMmwConfig(saved);
@@ -104,7 +112,14 @@ function ProviderField(): ReactElement {
     } finally {
       setBusy(false);
     }
-  }, [keyInput, ollama, port, provider]);
+  }, [keyInput, model, ollama, port, provider]);
+
+  const keyConfigured =
+    provider === "deepseek"
+      ? Boolean(cachedConfig.deepseekApiKey)
+      : provider === "openrouter"
+        ? Boolean(cachedConfig.openRouterApiKey)
+        : true;
 
   return (
     <View style={styles.col}>
@@ -112,6 +127,7 @@ function ProviderField(): ReactElement {
       <View style={styles.row}>
         {(
           [
+            ["deepseek", "DeepSeek"],
             ["openrouter", "OpenRouter"],
             ["ollama", "Ollama"],
           ] as const
@@ -133,25 +149,59 @@ function ProviderField(): ReactElement {
         keyboardType="number-pad"
         placeholder={String(MMW_DEFAULT_PORT)}
       />
-      <Text style={styles.label}>Ollama URL</Text>
-      <TextInput
-        style={styles.input}
-        value={ollama}
-        onChangeText={setOllama}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder="http://127.0.0.1:11434"
-      />
-      <Text style={styles.label}>OpenRouter API Key（留空不改）</Text>
-      <TextInput
-        style={styles.input}
-        value={keyInput}
-        onChangeText={setKeyInput}
-        secureTextEntry
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder={cachedConfig.openRouterApiKey ? "已配置 · 输入新值覆盖" : "sk-or-…"}
-      />
+      {provider === "deepseek" ? (
+        <>
+          <Text style={styles.label}>DeepSeek 模型</Text>
+          <TextInput
+            style={styles.input}
+            value={model}
+            onChangeText={setModel}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="deepseek-chat"
+          />
+          <Text style={styles.label}>DeepSeek API Key（留空不改）</Text>
+          <TextInput
+            style={styles.input}
+            value={keyInput}
+            onChangeText={setKeyInput}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder={keyConfigured ? "已配置 · 输入新值覆盖" : "sk-…"}
+          />
+          <Text style={styles.label}>
+            也可在启动环境设 DEEPSEEK_API_KEY；ensure 反代会自动带上，避免浏览器 CORS。
+          </Text>
+        </>
+      ) : null}
+      {provider === "openrouter" ? (
+        <>
+          <Text style={styles.label}>OpenRouter API Key（留空不改）</Text>
+          <TextInput
+            style={styles.input}
+            value={keyInput}
+            onChangeText={setKeyInput}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder={keyConfigured ? "已配置 · 输入新值覆盖" : "sk-or-…"}
+          />
+        </>
+      ) : null}
+      {provider === "ollama" ? (
+        <>
+          <Text style={styles.label}>Ollama URL</Text>
+          <TextInput
+            style={styles.input}
+            value={ollama}
+            onChangeText={setOllama}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="http://127.0.0.1:11434"
+          />
+        </>
+      ) : null}
       <Pressable
         onPress={() => void onSave()}
         disabled={busy}
@@ -180,7 +230,7 @@ export function registerMmwDetailConfig(host: WorkspaceAppHostApi): () => void {
           label: "AI / 端口",
           value: `${cfg.aiProvider} · :${cfg.port}`,
           helpText:
-            "密钥进本机 host.config；ensure 写入站根 agnx-host-config.json 供 iframe 读取。Ollama 需 OLLAMA_ORIGINS='*'。",
+            "默认 DeepSeek。密钥进本机 host.config；ensure 反代 /agnx-api/chat 供 iframe 与 Agent 工具调用。也可设 DEEPSEEK_API_KEY。",
           groupId: "mmw-runtime",
           groupTitle: "思维导图",
           valueContent: createElement(ProviderField),

@@ -2,7 +2,6 @@
 /**
  * 场景：短跑 sidecar — 将 host.config mmw-prefs 同步为站根 agnx-host-config.json（iframe 可读）。
  * 用法：node .agnx/tools/sync-mmw-host-config.mjs [--agnx-home <path>] [--status]
- * stdout：单行 JSON { ok, configPath, outPath, aiProvider, hasOpenRouterKey, synced? }
  */
 import { access, constants as fsConstants, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -51,11 +50,20 @@ function normalizePrefs(raw) {
   const doc = raw && typeof raw === "object" ? raw : {};
   const pick = (v) => (typeof v === "string" ? v.trim() : "");
   const port = Number(doc.port);
+  const provider =
+    doc.aiProvider === "ollama"
+      ? "ollama"
+      : doc.aiProvider === "deepseek"
+        ? "deepseek"
+        : "openrouter";
   return {
     version: 1,
     port: Number.isFinite(port) && port > 0 && port <= 65535 ? Math.floor(port) : 3095,
-    aiProvider: doc.aiProvider === "ollama" ? "ollama" : "openrouter",
+    aiProvider: provider,
     openRouterApiKey: pick(doc.openRouterApiKey),
+    deepseekApiKey: pick(doc.deepseekApiKey) || pick(process.env.DEEPSEEK_API_KEY),
+    deepseekBaseUrl: (pick(doc.deepseekBaseUrl) || "https://api.deepseek.com").replace(/\/+$/, ""),
+    deepseekModel: pick(doc.deepseekModel) || "deepseek-chat",
     ollamaBaseUrl: (pick(doc.ollamaBaseUrl) || "http://127.0.0.1:11434").replace(/\/+$/, ""),
   };
 }
@@ -78,10 +86,11 @@ function toPublicJson(prefs) {
     version: 1,
     aiProvider: prefs.aiProvider,
     ollamaBaseUrl: prefs.ollamaBaseUrl,
+    deepseekBaseUrl: prefs.deepseekBaseUrl,
+    deepseekModel: prefs.deepseekModel,
   };
-  if (prefs.openRouterApiKey) {
-    out.openRouterApiKey = prefs.openRouterApiKey;
-  }
+  if (prefs.openRouterApiKey) out.openRouterApiKey = prefs.openRouterApiKey;
+  if (prefs.deepseekApiKey) out.deepseekApiKey = prefs.deepseekApiKey;
   return out;
 }
 
@@ -103,6 +112,7 @@ async function main() {
       aiProvider: prefs.aiProvider,
       port: prefs.port,
       hasOpenRouterKey: Boolean(prefs.openRouterApiKey),
+      hasDeepseekKey: Boolean(prefs.deepseekApiKey),
       outExists: await pathExists(outPath),
     });
     return;
@@ -117,6 +127,7 @@ async function main() {
     aiProvider: prefs.aiProvider,
     port: prefs.port,
     hasOpenRouterKey: Boolean(prefs.openRouterApiKey),
+    hasDeepseekKey: Boolean(prefs.deepseekApiKey),
   });
 }
 
