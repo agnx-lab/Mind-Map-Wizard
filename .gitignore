@@ -1,2 +1,4 @@
 .agnx-mmw-runtime/
+# ensure 注入：可能含 OpenRouter key，禁止入库
+agnx-host-config.json
 .DS_Store

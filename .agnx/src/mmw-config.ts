@@ -1,0 +1,103 @@
+// 场景：Mind Map Wizard host.config 文档 — AI 提供方 / OpenRouter / Ollama。
+import type { WorkspaceAppConfigApi } from "@getagnx/app-sdk";
+import { MMW_APP_ID, MMW_CONFIG_KEY, MMW_DEFAULT_PORT } from "./constants";
+
+export type MmwAiProvider = "openrouter" | "ollama";
+
+export interface MmwAppConfigDocument {
+  version: 1;
+  port: number;
+  aiProvider: MmwAiProvider;
+  openRouterApiKey?: string;
+  ollamaBaseUrl?: string;
+}
+
+export function defaultMmwAppConfigDocument(): MmwAppConfigDocument {
+  return {
+    version: 1,
+    port: MMW_DEFAULT_PORT,
+    aiProvider: "openrouter",
+    ollamaBaseUrl: "http://127.0.0.1:11434",
+  };
+}
+
+function normalizeProvider(raw: unknown): MmwAiProvider {
+  return raw === "ollama" ? "ollama" : "openrouter";
+}
+
+function normalizeSecret(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function normalizeMmwAppConfigDocument(raw: unknown): MmwAppConfigDocument {
+  const defaults = defaultMmwAppConfigDocument();
+  if (!raw || typeof raw !== "object") return defaults;
+  const doc = raw as Partial<MmwAppConfigDocument>;
+  const port = Number(doc.port);
+  return {
+    version: 1,
+    port:
+      Number.isFinite(port) && port > 0 && port <= 65535
+        ? Math.floor(port)
+        : defaults.port,
+    aiProvider: normalizeProvider(doc.aiProvider),
+    openRouterApiKey: normalizeSecret(doc.openRouterApiKey),
+    ollamaBaseUrl:
+      normalizeSecret(doc.ollamaBaseUrl)?.replace(/\/+$/, "") || defaults.ollamaBaseUrl,
+  };
+}
+
+export async function loadMmwConfigFromHost(
+  config: WorkspaceAppConfigApi | null | undefined,
+): Promise<MmwAppConfigDocument> {
+  if (!config?.get) return defaultMmwAppConfigDocument();
+  try {
+    const raw = await config.get({
+      scope: "app",
+      appId: MMW_APP_ID,
+      key: MMW_CONFIG_KEY,
+      defaultValue: null,
+    });
+    return normalizeMmwAppConfigDocument(raw);
+  } catch {
+    return defaultMmwAppConfigDocument();
+  }
+}
+
+export async function saveMmwConfigToHost(
+  config: WorkspaceAppConfigApi | null | undefined,
+  patch: Partial<
+    Pick<MmwAppConfigDocument, "port" | "aiProvider" | "openRouterApiKey" | "ollamaBaseUrl">
+  >,
+): Promise<MmwAppConfigDocument> {
+  const current = await loadMmwConfigFromHost(config);
+  const merged: MmwAppConfigDocument = {
+    ...current,
+    ...patch,
+    version: 1,
+  };
+  if (patch.openRouterApiKey === "") {
+    delete merged.openRouterApiKey;
+  }
+  const normalized = normalizeMmwAppConfigDocument(merged);
+  if (!config?.set) return normalized;
+  await config.set({
+    scope: "app",
+    appId: MMW_APP_ID,
+    key: MMW_CONFIG_KEY,
+    value: normalized,
+  });
+  return normalized;
+}
+
+/** 写入静态站可读的注入文件（无密钥落 git；ensure / 面板保存后调用）。 */
+export function toPublicHostConfigJson(doc: MmwAppConfigDocument): Record<string, unknown> {
+  return {
+    version: 1,
+    aiProvider: doc.aiProvider,
+    ollamaBaseUrl: doc.ollamaBaseUrl,
+    openRouterApiKey: doc.openRouterApiKey || undefined,
+  };
+}
