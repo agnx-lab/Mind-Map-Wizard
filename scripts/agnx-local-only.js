@@ -1,10 +1,25 @@
-// 场景：Agnx M1/M2 — stub 外呼；host.config 注入；DeepSeek 走本机反代；Agent postMessage 桥。
+// 场景：Agnx M1/M2/M3 — stub 外呼；host.config；DeepSeek 反代；Agent 桥；本机导图历史跨壳同步。
 (function agnxMmwLocalOnly() {
   const BLOCKED = /stats\.mindmapwizard\.com|share\.mindmapwizard\.com/i;
   const ENCRYPT_KEY = "mmw_encryption_key_2024";
   const AI_PROVIDER_KEY = "mmw-ai-provider";
   const OLLAMA_BASE_URL_KEY = "mmw-ollama-base-url";
   const DEEPSEEK_MODEL_KEY = "mmw-deepseek-model";
+  const HISTORY_KEY = "mindmap-history";
+  const CURRENT_KEY = "json-mindmap-content";
+  const STORE_KEYS = new Set([HISTORY_KEY, CURRENT_KEY]);
+  const STORE_API = "/agnx-api/mindmap-store";
+  const MAX_HISTORY = 100;
+
+  const storageProto = Storage.prototype;
+  const rawGetItem = storageProto.getItem;
+  const rawSetItem = storageProto.setItem;
+  const rawRemoveItem = storageProto.removeItem;
+
+  let persistTimer = null;
+  let hydrateDone = false;
+  let persistInFlight = false;
+  let persistQueued = false;
 
   function encryptApiKey(apiKey) {
     if (!apiKey) return "";
@@ -82,7 +97,6 @@
 
   function installAiProviderPatches() {
     const provider = getProvider();
-    // DeepSeek / 统一本机反代：避 CORS，密钥留在 ensure 侧
     window.getChatCompletionsUrl = function agnxGetChatCompletionsUrl() {
       const p = getProvider();
       if (p === "ollama") {
@@ -92,7 +106,6 @@
         );
         return `${base}/v1/chat/completions`;
       }
-      // deepseek + openrouter 都可走本机反代（deepseek 必须）
       if (p === "deepseek") {
         return `${window.location.origin}/agnx-api/chat/completions`;
       }
@@ -121,13 +134,11 @@
       return getProvider() === "ollama";
     };
     window.aiRequiresApiKey = function agnxAiRequiresApiKey() {
-      // deepseek key 在反代侧；iframe 可不弹 OpenRouter 对话框
       return getProvider() === "openrouter";
     };
 
     if (provider === "deepseek") {
       try {
-        // 避免模型选择器卡在 openrouter 专属 id
         const model = localStorage.getItem(DEEPSEEK_MODEL_KEY) || "deepseek-chat";
         localStorage.setItem("selected-model", model);
       } catch {
@@ -163,7 +174,6 @@
           encryptApiKey(cfg.openRouterApiKey.trim()),
         );
       }
-      // deepseek key 不进 iframe localStorage（反代读站根 json）；有 key 时假装已配置以免弹窗
       if (
         cfg.aiProvider === "deepseek" &&
         ((typeof cfg.deepseekApiKey === "string" && cfg.deepseekApiKey.trim()) ||
@@ -183,11 +193,195 @@
     }
   }
 
+  function readLocalHistory() {
+    try {
+      const raw = rawGetItem.call(localStorage, HISTORY_KEY) || "[]";
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function readLocalCurrent() {
+    try {
+      return rawGetItem.call(localStorage, CURRENT_KEY) || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function mergeHistory(diskHistory, localHistory) {
+    const byId = new Map();
+    for (const item of [...(diskHistory || []), ...(localHistory || [])]) {
+      if (!item || typeof item !== "object" || item.id == null) continue;
+      const id = String(item.id);
+      const prev = byId.get(id);
+      if (!prev) {
+        byId.set(id, item);
+        continue;
+      }
+      const tPrev = Date.parse(prev.timestamp || 0) || 0;
+      const tCur = Date.parse(item.timestamp || 0) || 0;
+      if (tCur >= tPrev) {
+        byId.set(id, item);
+      }
+    }
+    return [...byId.values()]
+      .sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0))
+      .slice(0, MAX_HISTORY);
+  }
+
+  function mergeCurrent(diskCurrent, localCurrent) {
+    const disk = typeof diskCurrent === "string" ? diskCurrent : "";
+    const local = typeof localCurrent === "string" ? localCurrent : "";
+    if (!local.trim() && disk.trim()) return disk;
+    if (local.trim() && !disk.trim()) return local;
+    return local || disk || "";
+  }
+
+  function historyFingerprint(history) {
+    try {
+      return JSON.stringify(
+        (history || []).map((item) => [String(item?.id ?? ""), item?.timestamp || ""]),
+      );
+    } catch {
+      return "";
+    }
+  }
+
+  function refreshHistoryUi() {
+    try {
+      if (typeof window.loadMindmapsLeftSidebar === "function") {
+        window.loadMindmapsLeftSidebar();
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: HISTORY_KEY,
+          newValue: rawGetItem.call(localStorage, HISTORY_KEY),
+          storageArea: localStorage,
+        }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  function snapshotStoreFromLocal() {
+    return {
+      version: 1,
+      history: readLocalHistory(),
+      current: readLocalCurrent(),
+    };
+  }
+
+  async function persistStoreNow() {
+    if (persistInFlight) {
+      persistQueued = true;
+      return;
+    }
+    persistInFlight = true;
+    try {
+      const body = JSON.stringify(snapshotStoreFromLocal());
+      const res = await originalFetch(STORE_API, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body,
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        console.warn("[agnx-mmw] mindmap-store persist failed", res.status);
+      }
+    } catch (error) {
+      console.warn("[agnx-mmw] mindmap-store persist skip", error);
+    } finally {
+      persistInFlight = false;
+      if (persistQueued) {
+        persistQueued = false;
+        void persistStoreNow();
+      }
+    }
+  }
+
+  function schedulePersist() {
+    if (!hydrateDone) return;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      persistTimer = null;
+      void persistStoreNow();
+    }, 250);
+  }
+
+  function installStoreBridge() {
+    storageProto.setItem = function agnxSetItem(key, value) {
+      rawSetItem.call(this, key, value);
+      if (this === localStorage && STORE_KEYS.has(String(key))) {
+        schedulePersist();
+      }
+    };
+    storageProto.removeItem = function agnxRemoveItem(key) {
+      rawRemoveItem.call(this, key);
+      if (this === localStorage && STORE_KEYS.has(String(key))) {
+        schedulePersist();
+      }
+    };
+  }
+
+  async function hydrateMindmapStore() {
+    let disk = { version: 1, history: [], current: "" };
+    try {
+      const res = await originalFetch(STORE_API, { cache: "no-store" });
+      if (res.ok) {
+        const parsed = await res.json();
+        if (parsed && typeof parsed === "object") {
+          disk = {
+            version: 1,
+            history: Array.isArray(parsed.history) ? parsed.history : [],
+            current: typeof parsed.current === "string" ? parsed.current : "",
+          };
+        }
+      } else {
+        console.warn("[agnx-mmw] mindmap-store get failed", res.status);
+      }
+    } catch (error) {
+      console.warn("[agnx-mmw] mindmap-store get skip", error);
+    }
+
+    const localHistory = readLocalHistory();
+    const localCurrent = readLocalCurrent();
+    const mergedHistory = mergeHistory(disk.history, localHistory);
+    const mergedCurrent = mergeCurrent(disk.current, localCurrent);
+
+    try {
+      rawSetItem.call(localStorage, HISTORY_KEY, JSON.stringify(mergedHistory));
+      if (mergedCurrent) {
+        rawSetItem.call(localStorage, CURRENT_KEY, mergedCurrent);
+      }
+    } catch (error) {
+      console.warn("[agnx-mmw] mindmap-store seed localStorage failed", error);
+    }
+
+    const needUpload =
+      historyFingerprint(mergedHistory) !== historyFingerprint(disk.history) ||
+      mergedCurrent !== (disk.current || "");
+
+    hydrateDone = true;
+    if (needUpload) {
+      await persistStoreNow();
+    }
+    refreshHistoryUi();
+    console.info("[agnx-mmw] mindmap-store hydrated", {
+      historyCount: mergedHistory.length,
+      uploaded: needUpload,
+    });
+  }
+
   function exportCurrentMarkdown() {
     try {
-      if (typeof window.DownloadHandler?.downloadMarkdown === "function") {
-        // 只取内容：复用 downloadMarkdown 的 walk 逻辑太重；优先 currentMindmap.markdown
-      }
       const fromCurrent =
         window.currentMindmap && typeof window.currentMindmap.markdown === "string"
           ? window.currentMindmap.markdown
@@ -217,7 +411,10 @@
     if (!data || data.type !== "agnx-mmw") return;
     const reply = (payload) => {
       try {
-        event.source?.postMessage({ type: "agnx-mmw-result", requestId: data.requestId, ...payload }, "*");
+        event.source?.postMessage(
+          { type: "agnx-mmw-result", requestId: data.requestId, ...payload },
+          "*",
+        );
       } catch {
         // ignore
       }
@@ -258,7 +455,6 @@
           reply({ ok: false, action: "generate", error: "topic_required" });
           return;
         }
-        // 触发站内生成：填 prompt 并点生成（与用户手势同路径）
         const prompt =
           document.getElementById("prompt-input") ||
           document.querySelector('input[placeholder*="topic"], textarea#prompt-input');
@@ -285,17 +481,24 @@
     }
   }
 
+  installStoreBridge();
   installShareStub();
-  void applyHostConfig().then(() => {
+  void Promise.all([applyHostConfig(), hydrateMindmapStore()]).then(() => {
     installAiProviderPatches();
   });
   document.addEventListener("DOMContentLoaded", () => {
     installShareStub();
     installAiProviderPatches();
+    if (hydrateDone) {
+      refreshHistoryUi();
+    }
   });
   window.addEventListener("load", () => {
     installShareStub();
     installAiProviderPatches();
+    if (hydrateDone) {
+      refreshHistoryUi();
+    }
   });
   window.addEventListener("message", handleAgentMessage);
 })();

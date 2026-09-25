@@ -1,0 +1,36 @@
+{
+  "id": "mind-map-wizard",
+  "name": "思维导图",
+  "version": "0.1.0",
+  "description": "Agnx 外置子应用：Mind Map Wizard 整仓静态站 + Guest direct-iframe",
+  "engines": {
+    "agnx": ">=1.0.0"
+  },
+  "main": "./dist/index.js",
+  "icon": "./.agnx/assets/mmw-icon.svg",
+  "sidecar": {
+    "supervised": false,
+    "ensureTool": ".agnx/tools/ensure-mind-map-wizard.mjs",
+    "stateFile": "mind-map-wizard.json",
+    "defaultPort": 3095
+  },
+  "guest": {
+    "kind": "web",
+    "auth": "none",
+    "preferStrategy": "auto"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "mind-map-wizard.open",
+        "title": "思维导图"
+      }
+    ],
+    "panels": [
+      {
+        "id": "mind-map-wizard.main",
+        "title": "思维导图"
+      }
+    ]
+  }
+}

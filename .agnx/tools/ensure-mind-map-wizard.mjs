@@ -93,7 +93,14 @@ async function readPrefsFingerprint(agnxHome) {
 }
 
 function fingerprint(cfg, prefsFp) {
-  return JSON.stringify({ repoRoot, port: cfg.port, prefsFp, server: "mmw-static-server" });
+  // api 版本变更时强制 ensure 重启静态服（勿只靠 prefs 指纹）
+  return JSON.stringify({
+    repoRoot,
+    port: cfg.port,
+    prefsFp,
+    server: "mmw-static-server",
+    api: "mindmap-store-v1",
+  });
 }
 
 async function pathExists(p) {
