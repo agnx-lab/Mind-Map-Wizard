@@ -20,5 +20,8 @@
     "@agnx-lab/app-sdk": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   }
 }
