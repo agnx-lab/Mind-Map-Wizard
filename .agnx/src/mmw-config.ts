@@ -1,5 +1,5 @@
 // 场景：Mind Map Wizard host.config 文档 — OpenRouter / DeepSeek / Ollama。
-import type { WorkspaceAppConfigApi } from "@getagnx/app-sdk";
+import type { WorkspaceAppConfigApi } from "@agnx-lab/app-sdk";
 import { MMW_APP_ID, MMW_CONFIG_KEY, MMW_DEFAULT_PORT } from "./constants";
 
 export type MmwAiProvider = "openrouter" | "deepseek" | "ollama";

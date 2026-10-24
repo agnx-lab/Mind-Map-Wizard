@@ -1,5 +1,5 @@
 // 场景：Mind Map Wizard host 绑定 — 详情 / panel 共用。
-import type { WorkspaceAppHostApi } from "@getagnx/app-sdk";
+import type { WorkspaceAppHostApi } from "@agnx-lab/app-sdk";
 
 let boundHost: WorkspaceAppHostApi | null = null;
 

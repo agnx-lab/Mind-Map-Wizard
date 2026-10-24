@@ -1,5 +1,5 @@
 // 场景：Mind Map Wizard Agent 工具 — 打开 / 生成 / 导出 Markdown（postMessage 桥）。
-import type { WorkspaceAppHostApi } from "@getagnx/app-sdk";
+import type { WorkspaceAppHostApi } from "@agnx-lab/app-sdk";
 import {
   MMW_APP_ID,
   MMW_DEFAULT_PORT,

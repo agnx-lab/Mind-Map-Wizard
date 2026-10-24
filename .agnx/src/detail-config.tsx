@@ -2,7 +2,7 @@
 import { createElement, useCallback, useEffect, useState, type ReactElement } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type { WorkspaceAppHostApi } from "@getagnx/app-sdk";
+import type { WorkspaceAppHostApi } from "@agnx-lab/app-sdk";
 import { MMW_APP_ID, MMW_DEFAULT_PORT } from "./constants";
 import { getBoundHost } from "./host-bind";
 import {

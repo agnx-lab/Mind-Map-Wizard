@@ -12,7 +12,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type {
   WorkspaceAppBrandLogoLoaderPanelProps,
   WorkspaceAppHostApi,
-} from "@getagnx/app-sdk";
+} from "@agnx-lab/app-sdk";
 import {
   MMW_APP_ID,
   MMW_DEFAULT_PORT,

@@ -1,5 +1,5 @@
 // 场景：Mind Map Wizard Sub App 入口 — activate + 详情 + Agent 工具。
-import type { WorkspaceAppHostApi, WorkspaceAppModule } from "@getagnx/app-sdk";
+import type { WorkspaceAppHostApi, WorkspaceAppModule } from "@agnx-lab/app-sdk";
 import { activate as activatePanel, bindMindMapWizardHarnessHost } from "./panel";
 import { registerMmwDetailConfig } from "./detail-config";
 import { registerMmwAgentTools } from "./agent-tools";
