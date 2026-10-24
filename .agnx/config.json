@@ -1,0 +1,10 @@
+{
+  "appId": "mind-map-wizard",
+  "installState": "installed",
+  "launchMode": "packaged",
+  "source": {
+    "kind": "github",
+    "url": "https://github.com/linus-sch/Mind-Map-Wizard"
+  },
+  "updatedAt": "2026-10-24T04:35:00.000Z"
+}
